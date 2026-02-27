@@ -114,6 +114,12 @@ button.tab-active { background: #174e7a; }
 
 .inline { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
 
+.password-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
 .notification-row {
   display: flex;
   justify-content: space-between;
@@ -170,6 +176,41 @@ button.tab-active { background: #174e7a; }
 .error { color: #b91c1c; }
 .small { font-size: 12px; color: #5a6f87; }
 .loading { padding: 40px; text-align: center; }
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 9999;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 28px));
+}
+
+.toast {
+  background: #0f4c75;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 24px rgba(15, 76, 117, 0.35);
+  display: grid;
+  gap: 4px;
+  animation: toast-in 180ms ease-out;
+}
+
+.toast strong {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.toast span {
+  font-size: 14px;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 @media (max-width: 760px) {
   .split, header { flex-direction: column; align-items: flex-start; }

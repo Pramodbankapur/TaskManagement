@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
@@ -10,6 +10,7 @@ type SortBy = "created_desc" | "created_asc" | "deadline_asc" | "deadline_desc" 
 
 type User = { id: number; name: string; email: string; role: Role };
 type Notification = { id: number; message: string; read: boolean; created_at: string };
+type Toast = { id: number; message: string };
 
 type TaskItem = {
   id: number;
@@ -237,6 +238,7 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [mailDebug, setMailDebug] = useState<any>(null);
   const [msg, setMsg] = useState("");
 
@@ -250,6 +252,8 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   const [lookupKey, setLookupKey] = useState("");
   const [lookupResult, setLookupResult] = useState<any | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const seenNotificationIds = useRef<Set<number>>(new Set());
+  const notificationsInitialized = useRef(false);
 
   const privileged = useMemo(() => user.role === "OWNER" || user.role === "MANAGER", [user.role]);
   const defaultDeadline = useMemo(() => currentLocalDateTimeInput(), []);
@@ -279,6 +283,50 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   useEffect(() => {
     loadData().catch((err) => setMsg(err.message));
   }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      loadData().catch(() => {});
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  function showToast(message: string) {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((prev) => [...prev, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 6000);
+  }
+
+  useEffect(() => {
+    const unread = notifications.filter((n) => !n.read);
+    if (!notificationsInitialized.current) {
+      notificationsInitialized.current = true;
+      for (const n of unread) seenNotificationIds.current.add(n.id);
+      return;
+    }
+
+    const fresh = unread.filter((n) => !seenNotificationIds.current.has(n.id));
+    if (fresh.length === 0) return;
+
+    for (const n of fresh) {
+      seenNotificationIds.current.add(n.id);
+      showToast(n.message);
+
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (window.Notification.permission === "granted") {
+          new window.Notification("New Task Notification", { body: n.message });
+        } else if (window.Notification.permission === "default") {
+          window.Notification.requestPermission().then((perm) => {
+            if (perm === "granted") {
+              new window.Notification("New Task Notification", { body: n.message });
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+  }, [notifications]);
 
   function isSameDay(value: string, target: string): boolean {
     return value.slice(0, 10) === target;
@@ -649,6 +697,17 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
       )}
 
       {msg && <p className="msg">{msg}</p>}
+
+      {toasts.length > 0 && (
+        <div className="toast-stack">
+          {toasts.map((toast) => (
+            <div className="toast" key={toast.id}>
+              <strong>New Notification</strong>
+              <span>{toast.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
