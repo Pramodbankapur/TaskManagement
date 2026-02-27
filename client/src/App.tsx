@@ -130,7 +130,16 @@ function ClientComplaintPage() {
 
     setLoading(true);
     try {
-      await api<{ success: boolean }>("/api/public/complaints", { method: "POST", body: form });
+      await api<{ success: boolean }>("/api/public/complaints", {
+        method: "POST",
+        body: JSON.stringify({
+          organizationName: form.get("organizationName"),
+          contactName: form.get("contactName"),
+          email: form.get("email"),
+          phone: form.get("phone"),
+          description: form.get("description")
+        })
+      });
       setMessage("Complaint submitted successfully.");
       (e.target as HTMLFormElement).reset();
     } catch (err) {
@@ -149,7 +158,6 @@ function ClientComplaintPage() {
         <input name="email" type="email" placeholder="Email" required />
         <input name="phone" placeholder="Phone" required />
         <textarea name="description" placeholder="Complaint / Task description" required minLength={10} />
-        <input type="file" name="attachment" />
         <button disabled={loading}>{loading ? "Submitting..." : "Submit Complaint"}</button>
       </form>
       {GOOGLE_FORM_URL && (
@@ -164,6 +172,7 @@ function ClientComplaintPage() {
 
 function InternalLoginPage({ onLogin }: { onLogin: (u: User) => void }) {
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -188,7 +197,12 @@ function InternalLoginPage({ onLogin }: { onLogin: (u: User) => void }) {
       <h2>Internal Login</h2>
       <form onSubmit={submit} className="grid">
         <input name="email" type="email" placeholder="Work Email" required />
-        <input name="password" type="password" placeholder="Password" required />
+        <div className="password-row">
+          <input name="password" type={showPassword ? "text" : "password"} placeholder="Password" required />
+          <button type="button" onClick={() => setShowPassword((prev) => !prev)}>
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
         <button type="submit">Sign In</button>
       </form>
       <p className="small">Internal access only. Contact owner for account creation.</p>
@@ -261,7 +275,7 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
       setTasks(data[2]);
     }
   }
-[]
+
   useEffect(() => {
     loadData().catch((err) => setMsg(err.message));
   }, []);
@@ -367,7 +381,12 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   async function addUpdate(e: FormEvent<HTMLFormElement>, taskId: number) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await api(`/api/tasks/${taskId}/updates`, { method: "POST", body: form });
+    await api(`/api/tasks/${taskId}/updates`, {
+      method: "POST",
+      body: JSON.stringify({
+        remarks: form.get("remarks")
+      })
+    });
     (e.target as HTMLFormElement).reset();
     setMsg("Task update added.");
   }
@@ -389,6 +408,8 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   }
 
   async function logout() {
+    const ok = window.confirm("Are you sure you want to logout?");
+    if (!ok) return;
     await api("/api/auth/logout", { method: "POST" });
     onLogout();
   }
@@ -619,7 +640,6 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
                 </div>
                 <form onSubmit={(e) => addUpdate(e, task.id)} className="grid">
                   <input name="remarks" placeholder="Add remarks" required />
-                  <input name="proof" type="file" />
                   <button type="submit">Add Update</button>
                 </form>
               </div>
