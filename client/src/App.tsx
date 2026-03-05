@@ -38,7 +38,7 @@ type TaskItem = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 const GOOGLE_FORM_URL = import.meta.env.VITE_GOOGLE_FORM_URL || "";
-const ENABLE_LOCAL_COMPLAINT_STORAGE = true;
+const ENABLE_LOCAL_COMPLAINT_STORAGE = import.meta.env.VITE_LOCAL_COMPLAINT_STORAGE === "1";
 const LOCAL_COMPLAINTS_KEY = "complaints_local_v1";
 const LOCAL_COMPLAINTS_COUNTER_KEY = "complaints_local_counter_v1";
 
@@ -508,6 +508,7 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
         })
       });
       setMsg("Task assigned successfully.");
+      setViewMode("assigned");
       await loadData();
     } catch (err) {
       setMsg((err as Error).message);
