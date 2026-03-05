@@ -11,6 +11,18 @@ type SortBy = "created_desc" | "created_asc" | "deadline_asc" | "deadline_desc" 
 type User = { id: number; name: string; email: string; role: Role };
 type Notification = { id: number; message: string; read: boolean; created_at: string };
 type Toast = { id: number; message: string };
+type LocalComplaintRecord = {
+  localId: number;
+  serverComplaintId?: number;
+  organization_name: string;
+  contact_name: string;
+  client_email: string;
+  client_phone: string;
+  description: string;
+  priority: Priority;
+  status: TaskStatus;
+  created_at: string;
+};
 
 type TaskItem = {
   id: number;
@@ -26,6 +38,61 @@ type TaskItem = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 const GOOGLE_FORM_URL = import.meta.env.VITE_GOOGLE_FORM_URL || "";
+const ENABLE_LOCAL_COMPLAINT_STORAGE = true;
+const LOCAL_COMPLAINTS_KEY = "complaints_local_v1";
+const LOCAL_COMPLAINTS_COUNTER_KEY = "complaints_local_counter_v1";
+
+function readLocalComplaints(): LocalComplaintRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_COMPLAINTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LocalComplaintRecord[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalComplaints(items: LocalComplaintRecord[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LOCAL_COMPLAINTS_KEY, JSON.stringify(items));
+}
+
+function nextLocalComplaintId(): number {
+  if (typeof window === "undefined") return Date.now();
+  const current = Number(window.localStorage.getItem(LOCAL_COMPLAINTS_COUNTER_KEY) || "900000");
+  const next = current + 1;
+  window.localStorage.setItem(LOCAL_COMPLAINTS_COUNTER_KEY, String(next));
+  return next;
+}
+
+function saveLocalComplaint(input: {
+  organizationName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  description: string;
+  serverComplaintId?: number;
+}): LocalComplaintRecord {
+  const complaints = readLocalComplaints();
+  const item: LocalComplaintRecord = {
+    localId: nextLocalComplaintId(),
+    serverComplaintId: input.serverComplaintId,
+    organization_name: input.organizationName,
+    contact_name: input.contactName,
+    client_email: input.email,
+    client_phone: input.phone,
+    description: input.description,
+    priority: "MEDIUM",
+    status: "OPEN",
+    created_at: new Date().toISOString()
+  };
+  complaints.unshift(item);
+  writeLocalComplaints(complaints);
+  return item;
+}
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -129,22 +196,32 @@ function ClientComplaintPage() {
     setMessage("");
     const form = new FormData(e.currentTarget);
 
+    const payload = {
+      organizationName: String(form.get("organizationName") || ""),
+      contactName: String(form.get("contactName") || ""),
+      email: String(form.get("email") || ""),
+      phone: String(form.get("phone") || ""),
+      description: String(form.get("description") || "")
+    };
+
     setLoading(true);
     try {
-      await api<{ success: boolean }>("/api/public/complaints", {
+      const response = await api<{ success: boolean; complaintId?: number }>("/api/public/complaints", {
         method: "POST",
-        body: JSON.stringify({
-          organizationName: form.get("organizationName"),
-          contactName: form.get("contactName"),
-          email: form.get("email"),
-          phone: form.get("phone"),
-          description: form.get("description")
-        })
+        body: JSON.stringify(payload)
       });
+      if (ENABLE_LOCAL_COMPLAINT_STORAGE) {
+        saveLocalComplaint({ ...payload, serverComplaintId: response.complaintId });
+      }
       setMessage("Complaint submitted successfully.");
       (e.target as HTMLFormElement).reset();
     } catch (err) {
-      setMessage((err as Error).message);
+      if (ENABLE_LOCAL_COMPLAINT_STORAGE) {
+        saveLocalComplaint(payload);
+        setMessage("Backend unavailable. Complaint saved locally for testing.");
+      } else {
+        setMessage((err as Error).message);
+      }
     } finally {
       setLoading(false);
     }
@@ -271,7 +348,28 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
     setSummary(data[0]);
     setNotifications(data[1]);
     if (privileged) {
-      setComplaints(data[2]);
+      const serverComplaints = data[2] as any[];
+      if (ENABLE_LOCAL_COMPLAINT_STORAGE) {
+        const localComplaints = readLocalComplaints().map((c) => ({
+          id: c.serverComplaintId || c.localId,
+          description: c.description,
+          priority: c.priority,
+          status: c.status,
+          created_at: c.created_at,
+          attachment_path: null,
+          organization_name: c.organization_name,
+          contact_name: c.contact_name,
+          client_email: c.client_email,
+          client_phone: c.client_phone,
+          task_id: null,
+          _local_only: !c.serverComplaintId
+        }));
+        const serverIds = new Set(serverComplaints.map((c: any) => Number(c.id)));
+        const merged = [...serverComplaints, ...localComplaints.filter((c) => c._local_only || !serverIds.has(Number(c.id)))];
+        setComplaints(merged);
+      } else {
+        setComplaints(serverComplaints);
+      }
       setTasks(data[3]);
       setEmployees(data[4]);
       if (user.role === "OWNER") setMailDebug(data[5]);
