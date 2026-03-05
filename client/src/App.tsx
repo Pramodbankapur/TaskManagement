@@ -336,19 +336,22 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
   const defaultDeadline = useMemo(() => currentLocalDateTimeInput(), []);
 
   async function loadData() {
-    const requests: Promise<any>[] = [api("/api/dashboard/summary"), api("/api/notifications")];
-    if (privileged) {
-      requests.push(api("/api/complaints"), api("/api/tasks"), api("/api/users/employees"));
-      if (user.role === "OWNER") requests.push(api("/api/system/mail-status"));
-    } else {
-      requests.push(api("/api/tasks/my"));
-    }
+    const summaryReq = api("/api/dashboard/summary");
+    const notificationsReq = api("/api/notifications");
 
-    const data = await Promise.all(requests);
-    setSummary(data[0]);
-    setNotifications(data[1]);
+    const [summaryRes, notificationsRes] = await Promise.allSettled([summaryReq, notificationsReq]);
+    if (summaryRes.status === "fulfilled") setSummary(summaryRes.value);
+    if (notificationsRes.status === "fulfilled") setNotifications(notificationsRes.value as Notification[]);
+
     if (privileged) {
-      const serverComplaints = data[2] as any[];
+      const [complaintsRes, tasksRes, employeesRes, mailRes] = await Promise.allSettled([
+        api("/api/complaints"),
+        api("/api/tasks"),
+        api("/api/users/employees"),
+        user.role === "OWNER" ? api("/api/system/mail-status") : Promise.resolve(null)
+      ]);
+
+      const serverComplaints = complaintsRes.status === "fulfilled" ? (complaintsRes.value as any[]) : [];
       if (ENABLE_LOCAL_COMPLAINT_STORAGE) {
         const localComplaints = readLocalComplaints().map((c) => ({
           id: c.serverComplaintId || c.localId,
@@ -370,11 +373,12 @@ function InternalDashboardPage({ user, onLogout }: { user: User; onLogout: () =>
       } else {
         setComplaints(serverComplaints);
       }
-      setTasks(data[3]);
-      setEmployees(data[4]);
-      if (user.role === "OWNER") setMailDebug(data[5]);
+      if (tasksRes.status === "fulfilled") setTasks(tasksRes.value as TaskItem[]);
+      if (employeesRes.status === "fulfilled") setEmployees(employeesRes.value as any[]);
+      if (user.role === "OWNER" && mailRes.status === "fulfilled") setMailDebug(mailRes.value);
     } else {
-      setTasks(data[2]);
+      const myTasks = await api("/api/tasks/my");
+      setTasks(myTasks as TaskItem[]);
     }
   }
 

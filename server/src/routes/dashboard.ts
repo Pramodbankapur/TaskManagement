@@ -6,23 +6,23 @@ export const dashboardRouter = Router();
 
 dashboardRouter.use(requireAuth);
 
-dashboardRouter.get("/summary", (req, res) => {
+dashboardRouter.get("/summary", async (req, res) => {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayIso = todayStart.toISOString();
 
   if (req.user!.role === "OWNER") {
-    const totalComplaintsToday = db
+    const totalComplaintsToday = await db
       .prepare("SELECT COUNT(*) as count FROM complaints WHERE created_at >= ?")
       .get(todayIso) as { count: number };
-    const pendingTasks = db
+    const pendingTasks = await db
       .prepare("SELECT COUNT(*) as count FROM tasks WHERE status IN ('OPEN', 'IN_PROGRESS')")
       .get() as { count: number };
-    const closedTasks = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'CLOSED'").get() as { count: number };
-    const overdueTasks = db
+    const closedTasks = await db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'CLOSED'").get() as { count: number };
+    const overdueTasks = await db
       .prepare("SELECT COUNT(*) as count FROM tasks WHERE deadline < ? AND status != 'CLOSED'")
       .get(new Date().toISOString()) as { count: number };
-    const workPerManager = db
+    const workPerManager = await db
       .prepare(
         `SELECT u.id, u.name, COUNT(t.id) as tasks_created
          FROM users u LEFT JOIN tasks t ON t.assigned_by = u.id
@@ -30,7 +30,7 @@ dashboardRouter.get("/summary", (req, res) => {
          GROUP BY u.id, u.name`
       )
       .all();
-    const employeePerformance = db
+    const employeePerformance = await db
       .prepare(
         `SELECT u.id, u.name,
                 COUNT(t.id) as total,
@@ -40,11 +40,11 @@ dashboardRouter.get("/summary", (req, res) => {
          GROUP BY u.id, u.name`
       )
       .all();
-    const complaintsByPeriod = db
+    const complaintsByPeriod = await db
       .prepare(
-        `SELECT substr(created_at, 1, 10) as day, COUNT(*) as count
+        `SELECT CAST(created_at AS DATE) as day, COUNT(*) as count
          FROM complaints
-         GROUP BY substr(created_at, 1, 10)
+         GROUP BY CAST(created_at AS DATE)
          ORDER BY day DESC
          LIMIT 30`
       )
@@ -66,10 +66,10 @@ dashboardRouter.get("/summary", (req, res) => {
   }
 
   if (req.user!.role === "MANAGER") {
-    const assignedToday = db
+    const assignedToday = await db
       .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_by = ? AND created_at >= ?")
       .get(req.user!.id, todayIso) as { count: number };
-    const unassignedComplaints = db
+    const unassignedComplaints = await db
       .prepare(
         `SELECT COUNT(*) as count
          FROM complaints c
@@ -77,7 +77,7 @@ dashboardRouter.get("/summary", (req, res) => {
          WHERE t.id IS NULL`
       )
       .get() as { count: number };
-    const pendingByEmployee = db
+    const pendingByEmployee = await db
       .prepare(
         `SELECT u.id, u.name, COUNT(t.id) as pending
          FROM users u LEFT JOIN tasks t ON t.assigned_to = u.id AND t.status IN ('OPEN', 'IN_PROGRESS')
@@ -85,7 +85,7 @@ dashboardRouter.get("/summary", (req, res) => {
          GROUP BY u.id, u.name`
       )
       .all();
-    const overdueTasks = db
+    const overdueTasks = await db
       .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_by = ? AND deadline < ? AND status != 'CLOSED'")
       .get(req.user!.id, new Date().toISOString()) as { count: number };
 
@@ -102,21 +102,21 @@ dashboardRouter.get("/summary", (req, res) => {
   }
 
   const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  const dueToday = db
+  const dueToday = await db
     .prepare(
       "SELECT COUNT(*) as count FROM tasks WHERE assigned_to = ? AND status != 'CLOSED' AND deadline >= ? AND deadline < ?"
     )
     .get(req.user!.id, todayIso, tomorrowStart) as { count: number };
-  const completed = db
+  const completed = await db
     .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_to = ? AND status = 'CLOSED'")
     .get(req.user!.id) as { count: number };
-  const openTasks = db
+  const openTasks = await db
     .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_to = ? AND status = 'OPEN'")
     .get(req.user!.id) as { count: number };
-  const inProgressTasks = db
+  const inProgressTasks = await db
     .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_to = ? AND status = 'IN_PROGRESS'")
     .get(req.user!.id) as { count: number };
-  const activeTasks = db
+  const activeTasks = await db
     .prepare("SELECT COUNT(*) as count FROM tasks WHERE assigned_to = ? AND status != 'CLOSED'")
     .get(req.user!.id) as { count: number };
 
